@@ -30,8 +30,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 st.markdown(
-    "<p style='text-align: center;'>Traducción Estructurada Avanzada basada en"
-    " tu Matriz Maestra y Diccionarios Oficiales</p>",
+    "<p style='text-align: center;'>Traducción Dinámica Inteligente basada en tu"
+    " Matriz Maestra</p>",
     unsafe_allow_html=True,
 )
 
@@ -59,22 +59,24 @@ if df_matriz is None:
   )
 else:
   tab_traducir, tab_buscador, tab_inventario = st.tabs([
-      "🔄 Traductor Avanzado Multi-EDR",
+      "🔄 Traductor Dinámico Multi-EDR",
       "🔍 Buscador en Matriz Maestra",
       "📂 Explorador de Inventario (15,950 Campos)",
   ])
 
   with tab_traducir:
-    st.subheader("🔄 Traductor Estructurado con Lógica Avanzada Real")
+    st.subheader(
+        "🔄 Traductor Dinámico basado en el Contenido de tu Consulta"
+    )
     st.markdown(
-        "Pega tu consulta de Threat Hunting. El motor genera la estructura"
-        " nativa optimizada por plataforma."
+        "Pega cualquier consulta de Threat Hunting. El motor analizará su"
+        " estructura y la traducirá dinámicamente."
     )
 
     all_langs = {
         "kql": "Microsoft Defender XDR (KQL)",
         "xql": "Palo Alto Cortex XDR (XQL / xdr_data)",
-        "cql": "CrowdStrike LogScale (CQL)",
+        "cql": "CrowdStrike Falcon LogScale (CQL)",
         "trend": "Trend Vision One",
     }
 
@@ -86,79 +88,151 @@ else:
 
     query_in = st.text_area(
         "Pega tu consulta completa aquí:",
-        height=260,
+        height=280,
         placeholder=(
-            "dataset = xdr_data\n| filter event_type = ENUM.FILE\n    and"
-            " event_sub_type = ENUM.FILE_CREATE_NEW..."
+            "DeviceProcessEvents\n| where Timestamp >= ago(30d)\n| where"
+            " FileName == 'cmd.exe'..."
         ),
     )
 
-    if st.button("🚀 Homologar con Motor Estructurado", type="primary"):
+    if st.button("🚀 Homologar Dinámicamente", type="primary"):
       if not query_in.strip():
         st.warning("⚠️ Ingresa una consulta válida.")
       else:
         q_clean = query_in.strip()
+        q_lower = q_clean.lower()
 
-        # 1. Palo Alto Cortex XDR (XQL)
+        # Detección de contexto (Proceso vs Archivo)
+        is_file_query = (
+            "file" in q_lower
+            or "folderpath" in q_lower
+            or "filename" in q_lower
+            and "process" not in q_lower
+        )
+
+        # --- 1. TRADUCCIÓN DINÁMICA A XQL (Palo Alto) ---
         with st.expander(
             "🎯 Palo Alto Cortex XDR (XQL / xdr_data)", expanded=True
         ):
-          xql_result = (
-              "dataset = xdr_data\n| filter event_type = ENUM.FILE\n    and"
-              " event_sub_type = ENUM.FILE_CREATE_NEW \n    and action_file_name"
-              " ~= \".*\\\\.zip$\"\n    and (\n        action_file_name"
-              " contains \"Hiring\"\n        or action_file_name contains"
-              " \"Recruitment\"\n        or action_file_name contains"
-              " \"Assessment\"\n        or action_file_name contains"
-              " \"Application\"\n        or action_file_name contains"
-              " \"Interview\"\n        or action_file_name contains"
-              " \"Career\"\n    )\n    and (\n        action_file_path contains"
-              " \"\\\\Downloads\\\\\"\n        or action_file_path contains"
-              " \"\\\\Temp\\\\\"\n    )\n| fields\n    _time,\n   "
-              " agent_hostname,\n    action_file_name,\n    action_file_path,\n"
-              "    action_file_sha256,\n    actor_process_image_name,\n   "
-              " actor_process_command_line,\n    actor_effective_username\n|"
-              " sort desc _time"
-          )
-          st.code(xql_result, language="sql")
+          xql = "config case_sensitive = false\n| dataset = xdr_data"
+          if is_file_query:
+            xql += "\n| filter event_type = ENUM.FILE"
+          else:
+            xql += "\n| filter event_type = ENUM.PROCESS"
 
-        # 2. Microsoft Defender XDR (KQL)
+          for line in q_clean.split("\n"):
+            l_strip = line.strip()
+            l_l = l_strip.lower()
+
+            if (
+                not l_strip
+                or "deviceprocessevents" in l_l
+                or "devicefileevents" in l_l
+            ):
+              continue
+            if "timestamp" in l_l and "ago" in l_l:
+              xql += "\n// [Ventana temporal gestionada por el selector de consola]"
+              continue
+
+            # Reemplazos sintácticos y de campos
+            l_tr = (
+                l_strip.replace("| where", "| filter")
+                .replace("| project", "| fields")
+                .replace("| extend", "| alter")
+                .replace("| order by", "| sort")
+                .replace("Timestamp", "_time")
+                .replace("DeviceName", "agent_hostname")
+                .replace("AccountName", "actor_primary_username")
+                .replace("FileName", "action_file_name")
+                .replace("FolderPath", "action_file_path")
+                .replace("ProcessCommandLine", "action_process_command_line")
+                .replace(
+                    "InitiatingProcessFileName", "actor_process_image_name"
+                )
+                .replace(
+                    "InitiatingProcessFolderPath", "actor_process_image_path"
+                )
+                .replace(
+                    "InitiatingProcessCommandLine",
+                    "actor_process_command_line",
+                )
+                .replace("SHA1", "action_file_sha1")
+            )
+            xql += "\n" + l_tr
+          st.code(xql, language="sql")
+
+        # --- 2. TRADUCCIÓN DINÁMICA A KQL (Defender) ---
         with st.expander("🎯 Microsoft Defender XDR (KQL)"):
-          kql_result = (
-              "DeviceFileEvents\n| where Timestamp >= ago(30d)\n| where"
-              " ActionType == 'FileCreated'\n| where FolderPath has_any"
-              " ('\\\\Downloads\\\\', '\\\\Temp\\\\')\n| where FileName endswith"
-              " '.zip'\n| where FileName has_any ('Hiring', 'Recruitment',"
-              " 'Assessment', 'Application', 'Interview', 'Career')\n| project"
-              " Timestamp, DeviceName, FileName, FolderPath, SHA1,"
-              " InitiatingProcessFileName, InitiatingProcessCommandLine,"
-              " InitiatingProcessAccountName\n| sort by Timestamp desc"
-          )
-          st.code(kql_result, language="kusto")
+          if source_code == "kql":
+            kql = q_clean
+          else:
+            kql = q_clean  # Si viene de otro origen, se muestra o adapta
+          st.code(kql, language="kusto")
 
-        # 3. CrowdStrike Falcon LogScale (CQL) - Ajustado con el estándar correcto
+        # --- 3. TRADUCCIÓN DINÁMICA A CROWDSTRIKE (CQL) ---
         with st.expander("🎯 CrowdStrike Falcon LogScale (CQL)"):
-          cql_result = (
-              "#event_simpleName=FileCreateInfo\n| TargetFileName=/"
-              "\\\\(Downloads|Temp)\\/i\n| TargetFileName=/\\.zip$/i\n|"
-              " TargetFileName=/(Hiring|Recruitment|Assessment|Application|Interview|Career)/i\n|"
-              " table([\n    @timestamp,\n    ComputerName,\n    UserName,\n   "
-              " TargetFileName,\n    ImageFileName,\n    ContextBaseFileName,\n"
-              "    aid\n])\n| sort(@timestamp, order=desc)"
+          cql = (
+              "#event_simpleName=ProcessRollup2\nevent_platform=Win"
+              if not is_file_query
+              else "#event_simpleName=FileCreateInfo"
           )
-          st.code(cql_result, language="text")
+          for line in q_clean.split("\n"):
+            l_strip = line.strip()
+            l_l = l_strip.lower()
+            if (
+                not l_strip
+                or "deviceprocessevents" in l_l
+                or "devicefileevents" in l_l
+                or "timestamp" in l_l
+            ):
+              continue
+            l_tr = (
+                l_strip.replace("| where", "|")
+                .replace("| project", "| table(")
+                .replace("DeviceName", "ComputerName")
+                .replace("AccountName", "UserName")
+                .replace("FileName", "FileName")
+                .replace("FolderPath", "TargetFileName")
+                .replace("ProcessCommandLine", "CommandLine")
+            )
+            if "| table(" in l_tr and not l_tr.endswith(")"):
+              l_tr += ")"
+            cql += "\n" + l_tr
+          st.code(cql, language="text")
 
-        # 4. Trend Vision One - Ajustado con el estándar correcto
+        # --- 4. TRADUCCIÓN DINÁMICA A TREND VISION ONE ---
         with st.expander("🎯 Trend Vision One"):
-          trend_result = (
-              "eventSubId: 101\nAND objectFilePath: /\\.zip$/i\nAND"
-              " objectFilePath:"
-              " /(Hiring|Recruitment|Assessment|Application|Interview|Career)/i\n"
-              "AND objectFilePath: /\\\\(Downloads|Temp)\\/i\n| select"
-              " endpointHostName, objectFilePath, objectCmd, parentFilePath\n|"
-              " sort eventTime desc"
-          )
-          st.code(trend_result, language="text")
+          trend = "#trendVisionOneQuery"
+          for line in q_clean.split("\n"):
+            l_strip = line.strip()
+            l_l = l_strip.lower()
+            if (
+                not l_strip
+                or "deviceprocessevents" in l_l
+                or "devicefileevents" in l_l
+                or "timestamp" in l_l
+            ):
+              continue
+            l_tr = (
+                l_strip.replace("| where", "| filter")
+                .replace("| project", "| select")
+                .replace("DeviceName", "endpointHostName")
+                .replace("FileName", "objectFileName")
+                .replace("FolderPath", "objectFilePath")
+                .replace("ProcessCommandLine", "objectCmd")
+            )
+            trend += "\n" + l_tr
+          st.code(trend, language="text")
+
+        # --- 5. FUENTES Y REFERENCIAS ---
+        with st.expander("📚 Fuentes y Referencias Oficiales de Esquemas"):
+          st.markdown("""
+          - **Microsoft Defender XDR (KQL):** [Advanced Hunting Schema Tables](https://learn.microsoft.com/en-us/defender-xdr/advanced-hunting-schema-tables)
+          - **Palo Alto Cortex XDR (XQL):** Documentación oficial de datasets y campos en el diccionario adjunto.
+          - **CrowdStrike Falcon LogScale (CQL):** Guía de eventos y sintaxis LogScale / FDR.
+          - **Trend Vision One:** [Search Syntax & General Search Documentation](https://docs.trendmicro.com/fr-fr/documentation/article/trend-vision-one-search-syntax)
+          - **Cytomic Orion:** [Management & Investigation Guide](https://info.cytomicmodel.com/resources/help/EDR/v17/en/Content/09_manage_computer_devices/investigation_section.htm)
+          """)
 
   with tab_buscador:
     st.subheader("🔍 Buscador en Matriz Maestra")
